@@ -14,9 +14,9 @@ from Cocoa import (
     NSImageNameLockLockedTemplate,
     NSImageNameLockUnlockedTemplate,
 )
-import traceback
 from constants import *
-from ArrowEdit import *
+from updateDoc import documentUpdated
+import traceback
 
 
 class CapsAndCorners(GeneralPlugin):
@@ -38,51 +38,7 @@ class CapsAndCorners(GeneralPlugin):
 
     @objc.python_method
     def updateDocument(self, sender):
-        for i in range(NUMBER_OF_FIELDS):
-            for prefix in ["name", "fit_", "widt", "lock", "dept"]:
-                getattr(self.w, prefix + str(i)).show(False)
-        if not Glyphs.currentDocument:
-            self.font = None
-            return
-        self.font = Glyphs.currentDocument.font
-        if not self.font:
-            return
-
-        corners = set()
-        caps = set()
-        for glyph in self.font.glyphs:
-            for layer in glyph.layers:
-                for hint in layer.hints:
-                    if hint.isCorner:
-                        if hint.type == CORNER:
-                            corners.add(hint.name)
-                        else:
-                            assert hint.type == CAP
-                            caps.add(hint.name)
-        caps = sorted(list(caps))
-        corners = sorted(list(corners))
-        self.cc = [(c, CAP) for c in caps]
-        self.cc += [(c, CORNER) for c in corners]
-        i = 0
-        for cname, ctype in self.cc:
-            if ctype == CAP:
-                getattr(self.w, "fit_" + str(i)).show(True)
-            nameBox = getattr(self.w, "name" + str(i))
-            nameBox.set(cname)
-            nameBox.show(True)
-            getattr(self.w, "widt" + str(i)).show(True)
-            getattr(self.w, "lock" + str(i)).show(True)
-            getattr(self.w, "dept" + str(i)).show(True)
-            i += 1
-            if i == NUMBER_OF_FIELDS:
-                break
-        newHeight = (
-            self.lineToLine + len(self.cc) * self.lineToLine + 2 * self.margin - 16
-        )
-        posSize = self.w.getPosSize()
-        self.w.setPosSize((posSize[0], posSize[1], posSize[2], newHeight))
-        self.isLocked = [False] * NUMBER_OF_FIELDS
-        self.update(None)
+        documentUpdated(self, sender)
 
     @objc.python_method
     def updateLockButtonImage(self, lockButton, i):
