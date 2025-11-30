@@ -1,23 +1,22 @@
 from __future__ import division, print_function, unicode_literals
 import objc
-
-from GlyphsApp import Glyphs, WINDOW_MENU
+from GlyphsApp import (
+    Glyphs,
+    WINDOW_MENU,
+    CORNER,
+    CAP,
+)
 from GlyphsApp.plugins import GeneralPlugin
+from window import setUpWindow
 
 from Cocoa import (
     NSMenuItem,
     NSImageNameLockLockedTemplate,
     NSImageNameLockUnlockedTemplate,
 )
-
-from window import setUpWindow
 from constants import *
 from updateDoc import documentUpdated
-from updateMain import mainUpdater
-
-from helpers.widgets import match_widget
-from helpers.hints import iter_matching_hints, update_hint_scale
-from helpers.parsing import parse_percent
+import traceback
 
 
 class CapsAndCorners(GeneralPlugin):
@@ -28,11 +27,11 @@ class CapsAndCorners(GeneralPlugin):
 
     @objc.python_method
     def start(self):
-        item = NSMenuItem.new()
-        item.setTitle_(self.name)
-        item.setAction_(self.showWindow_)
-        item.setTarget_(self)
-        Glyphs.menu[WINDOW_MENU].append(item)
+        newMenuItem = NSMenuItem.new()
+        newMenuItem.setTitle_(self.name)
+        newMenuItem.setAction_(self.showWindow_)
+        newMenuItem.setTarget_(self)
+        Glyphs.menu[WINDOW_MENU].append(newMenuItem)
 
     def showWindow_(self, sender):
         setUpWindow(self, sender)
@@ -42,119 +41,190 @@ class CapsAndCorners(GeneralPlugin):
         documentUpdated(self, sender)
 
     @objc.python_method
-    def update(self, sender):
-        mainUpdater(self, sender)
-
-    # ------------------------------------------------------------
-    #  UI helpers
-    # ------------------------------------------------------------
-
-    @objc.python_method
-    def updateLockButtonImage(self, lockButton, index):
-        if self.isLocked[index]:
+    def updateLockButtonImage(self, lockButton, i):
+        if self.isLocked[i]:
             lockButton.setImage(imageNamed=NSImageNameLockLockedTemplate)
         else:
             lockButton.setImage(imageNamed=NSImageNameLockUnlockedTemplate)
 
-    # ------------------------------------------------------------
-    #  Hint mutation (apply widt/dept changes)
-    # ------------------------------------------------------------
+    @objc.python_method
+    def update(self, sender):
+        try:
+            currentDocument = Glyphs.currentDocument
+            if not currentDocument or not self.font or not self.font.selectedLayers:
+                return
+            self.details = {}
+            for layer in self.font.selectedLayers:
+                for hint in layer.hints:
+                    if hint.isCorner:
+                        scale = hint.pyobjc_instanceMethods.scale()
+                        depth = abs(scale.y)
+                        width = abs(scale.x)
+                        isFit = hint.options & 8
+                        if hint.name in self.details:
+                            if self.details[hint.name]["widt"] != width:
+                                self.details[hint.name]["widt"] = MULTIPLE_VALUES
+                            if self.details[hint.name]["dept"] != depth:
+                                self.details[hint.name]["dept"] = MULTIPLE_VALUES
+                            if (
+                                hint.type == CAP
+                                and self.details[hint.name]["fit"] != isFit
+                            ):
+                                self.details[hint.name]["fit"] = MULTIPLE_VALUES
+                        else:
+                            hintDetails = {
+                                "type": hint.type,
+                                "widt": width,
+                                "dept": depth,
+                            }
+                            if hint.type == CAP:
+                                hintDetails["fit"] = isFit
+                            self.details[hint.name] = hintDetails
+            i = 0
+            for cname, ctype in self.cc:
+                anyDetails = cname in self.details
+                for dimension in ["widt", "dept"]:
+                    scaleField = getattr(self.w, dimension + str(i))
+                    if anyDetails:
+                        if self.details[cname][dimension] == MULTIPLE_VALUES:
+                            scaleField.set("")
+                        else:
+                            scaleField.set(
+                                "{0:g}".format(self.details[cname][dimension] * 100.0)
+                            )
+                    scaleField.show(anyDetails)
+                lockButton = getattr(self.w, "lock" + str(i))
+                if anyDetails:
+                    self.isLocked[i] = (
+                        self.details[cname]["widt"] == self.details[cname]["dept"]
+                    )
+                    self.updateLockButtonImage(lockButton, i)
+                lockButton.show(anyDetails)
+                if ctype == CAP:
+                    fitBox = getattr(self.w, "fit_" + str(i))
+                    if anyDetails:
+                        fitBox.set(self.details[cname]["fit"] != 0)
+                        getattr(self.w, "widt" + str(i)).show(not fitBox.get())
+                        # ^ for now, let’s hide this as Glyphs 3 does not report a sensible figure
+                        getattr(self.w, "widt" + str(i)).enable(not fitBox.get())
+                        getattr(self.w, "lock" + str(i)).show(not fitBox.get())
+                    fitBox.show(anyDetails)
+                i += 1
+                if i == NUMBER_OF_FIELDS:
+                    break
+        except:
+            print(traceback.format_exc())
 
     @objc.python_method
     def updateHint(self, cname, ctype, dimension, newValue):
-
         self.font.disableUpdateInterface()
-        try:
-            for layer in self.font.selectedLayers:
-                changed = False
-                parent = layer.parent
-                parent.beginUndo()
-
-                try:
-                    for hint in iter_matching_hints(layer, cname, ctype):
-                        if update_hint_scale(hint, dimension, newValue):
-                            changed = True
-                finally:
-                    if changed:
-                        parent.endUndo()
+        for layer in self.font.selectedLayers:
+            undoHasBegun = False
+            for hint in layer.hints:
+                if hint.type == ctype and hint.name == cname:
+                    scale = hint.pyobjc_instanceMethods.scale()
+                    if dimension == "widt":
+                        if abs(scale.x - newValue) < 0.00001:
+                            # no change. let’s skip this hint in order to avoid “empty” undo steps
+                            continue
+                        if scale.x > 0:
+                            scale.x = newValue
+                        else:
+                            scale.x = -newValue
                     else:
-                        parent.endUndo()
-
-        finally:
-            self.font.enableUpdateInterface()
-            Glyphs.redraw()
-
-    # ------------------------------------------------------------
-    #  Callbacks
-    # ------------------------------------------------------------
+                        if abs(scale.y - newValue) < 0.00001:
+                            continue
+                        if scale.y > 0:
+                            scale.y = newValue
+                        else:
+                            scale.y = -newValue
+                    if not undoHasBegun:
+                        layer.parent.beginUndo()
+                        undoHasBegun = True
+                    hint.setScale_(scale)
+            if undoHasBegun:
+                layer.parent.endUndo()
+        self.font.enableUpdateInterface()
+        Glyphs.redraw()
 
     @objc.python_method
     def editTextCallback(self, editText):
-        """
-        Handles widt/dept changes.
-        """
-        # Determine which parameter this corresponds to
-        i, cname, ctype = match_widget(self, editText, "")
-        if i is None:
-            return
-
-        # Determine whether this is 'widt' or 'dept'
-        dimension = None
-        for dim in ("widt", "dept"):
-            if editText is getattr(self.w, f"{dim}{i}", None):
-                dimension = dim
-                break
-
-        if dimension is None:
-            return
-
-        new_value = parse_percent(editText)
-        if new_value is None:
-            return
-
-        # Locked? Then apply to both dimensions
-        if self.isLocked[i]:
-            self.updateHint(cname, ctype, "widt", new_value)
-            self.updateHint(cname, ctype, "dept", new_value)
-        else:
-            self.updateHint(cname, ctype, dimension, new_value)
+        try:
+            i = 0
+            for cname, ctype in self.cc:
+                for dimension in ["widt", "dept"]:
+                    if editText == getattr(self.w, dimension + str(i)):
+                        try:
+                            newValue = 0.01 * float(editText.get().strip("%"))
+                        except:
+                            return
+                        if self.isLocked[i]:
+                            self.updateHint(cname, ctype, "widt", newValue)
+                            self.updateHint(cname, ctype, "dept", newValue)
+                        else:
+                            self.updateHint(cname, ctype, dimension, newValue)
+                        return
+                i += 1
+                if i == NUMBER_OF_FIELDS:
+                    break
+        except AttributeError:
+            pass
 
     @objc.python_method
     def fitCallback(self, fitBox):
-        """
-        Toggle the "fit" option bit on all matching hints.
-        """
-        i, cname, ctype = match_widget(self, fitBox, "fit_")
-        if i is None:
-            return
-
-        for layer in self.font.selectedLayers:
-            for hint in iter_matching_hints(layer, cname, ctype):
-                hint.options ^= 8
+        try:
+            i = 0
+            for cname, ctype in self.cc:
+                if fitBox == getattr(self.w, "fit_" + str(i)):
+                    for layer in self.font.selectedLayers:
+                        for hint in layer.hints:
+                            if hint.type == ctype and hint.name == cname:
+                                hint.options = hint.options ^ 8
+                    return
+                i += 1
+                if i == NUMBER_OF_FIELDS:
+                    break
+        except AttributeError:
+            pass
 
     @objc.python_method
     def lockWidthDepthCallback(self, lockButton):
-        """
-        Toggle lock state and normalise widt/dept if newly locked.
-        """
-        i, cname, ctype = match_widget(self, lockButton, "lock")
-        if i is None:
-            return
+        try:
+            i = 0
+            for cname, ctype in self.cc:
+                if lockButton == getattr(self.w, "lock" + str(i)):
+                    self.isLocked[i] = not self.isLocked[i]
+                    lockButton = getattr(self.w, "lock" + str(i))
+                    self.updateLockButtonImage(lockButton, i)
+                    if self.isLocked[i]:
+                        cname, ctype = self.cc[i]
+                        details = self.details[cname]
+                        if details["widt"] != details["dept"]:
+                            details["widt"] = (details["widt"] + details["dept"]) / 2
+                            details["dept"] = details["widt"]
+                            self.updateHint(cname, ctype, "widt", details["widt"])
+                            self.updateHint(cname, ctype, "dept", details["widt"])
+                    return
+                i += 1
+                if i == NUMBER_OF_FIELDS:
+                    break
+        except AttributeError:
+            pass
 
-        # Flip
-        self.isLocked[i] = not self.isLocked[i]
-        self.updateLockButtonImage(lockButton, i)
+    @objc.python_method
+    def __del__(self):
+        Glyphs.removeCallback(self.update)
+        Glyphs.removeCallback(self.updateDocument)
 
-        # If locking, force widt and dept to match
-        if not self.isLocked[i]:
-            return
+    @objc.python_method
+    def __file__(self):
+        """Please leave this method unchanged"""
+        return __file__
 
-        details = self.details[cname]
-        w = details["widt"]
-        d = details["dept"]
-
-        if w != d:
-            avg = (w + d) / 2.0
-            details["widt"] = details["dept"] = avg
-            self.updateHint(cname, ctype, "widt", avg)
-            self.updateHint(cname, ctype, "dept", avg)
+    def windowClose_(self, window):
+        try:
+            Glyphs.removeCallback(self.update)
+            Glyphs.removeCallback(self.updateDocument)
+            return True
+        except:
+            print(traceback.format_exc())
