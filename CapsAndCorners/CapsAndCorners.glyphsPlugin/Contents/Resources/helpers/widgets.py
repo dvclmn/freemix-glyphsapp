@@ -1,6 +1,3 @@
-# helpers/widgets.py
-
-
 def match_widget(owner, widget, prefix):
     """
     Given a widget and a prefix, return:
