@@ -3,37 +3,20 @@ import objc
 from GlyphsApp import (
     Glyphs,
     WINDOW_MENU,
-    DOCUMENTACTIVATED,
-    DOCUMENTWILLCLOSE,
-    UPDATEINTERFACE,
     CORNER,
     CAP,
 )
 from GlyphsApp.plugins import GeneralPlugin
-import vanilla
+from window import setUpWindow
+
 from Cocoa import (
     NSMenuItem,
     NSImageNameLockLockedTemplate,
     NSImageNameLockUnlockedTemplate,
 )
 import traceback
-
-NUMBER_OF_FIELDS = 12
-MULTIPLE_VALUES = -1024
-
-# from https://forum.glyphsapp.com/t/vanilla-make-edittext-arrow-savvy/5894/2
-GSSteppingTextField = objc.lookUpClass("GSSteppingTextField")
-
-
-class ArrowEditText(vanilla.EditText):
-    nsTextFieldClass = GSSteppingTextField
-
-    def _setCallback(self, callback):
-        super(ArrowEditText, self)._setCallback(callback)
-        if callback is not None and self._continuous:
-            self._nsObject.setContinuous_(True)
-            self._nsObject.setAction_(self._target.action_)
-            self._nsObject.setTarget_(self._target)
+from constants import *
+from ArrowEdit import *
 
 
 class CapsAndCorners(GeneralPlugin):
@@ -51,110 +34,7 @@ class CapsAndCorners(GeneralPlugin):
         Glyphs.menu[WINDOW_MENU].append(newMenuItem)
 
     def showWindow_(self, sender):
-        try:
-            self.margin = 13
-            gutter = 6
-            widthName = 128
-            widthFitBox = 20
-            widthDimensionBox = 58
-            self.textFieldHeight = 23
-            self.lineToLine = self.textFieldHeight + 5
-            self.w = vanilla.HUDFloatingWindow(
-                (100, 100), title=self.name, autosaveName="FMXCapsAndCorners"
-            )
-            posy = self.margin - 4
-            posx = self.margin
-            posx += widthName
-            width = widthFitBox
-            self.w.headerFit = vanilla.TextBox(
-                (posx, posy, width, self.textFieldHeight), text="fit"
-            )
-            posx += width
-            width = widthDimensionBox
-            self.w.headerWidth = vanilla.TextBox(
-                (posx, posy, width, self.textFieldHeight), text="width"
-            )
-            posx += width + gutter
-            width = self.textFieldHeight - 10
-            posx += width + gutter
-            width = widthDimensionBox
-            self.w.headerDepth = vanilla.TextBox(
-                (posx, posy, width, self.textFieldHeight), text="depth"
-            )
-            posx += width
-            dialogWidth = posx + self.margin
-            posy += self.lineToLine - 8
-            for i in range(NUMBER_OF_FIELDS):
-                posx = self.margin
-                width = widthName
-                setattr(
-                    self.w,
-                    "name" + str(i),
-                    vanilla.TextBox(
-                        (posx, posy + 2, width, self.textFieldHeight),
-                        text="_cap.something",
-                    ),
-                )
-                posx += width
-                width = widthFitBox
-                setattr(
-                    self.w,
-                    "fit_" + str(i),
-                    vanilla.CheckBox(
-                        (posx, posy, width, self.textFieldHeight),
-                        callback=self.fitCallback,
-                        title="",
-                        sizeStyle="small",
-                    ),
-                )
-                posx += width
-                width = widthDimensionBox
-                setattr(
-                    self.w,
-                    "widt" + str(i),
-                    ArrowEditText(
-                        (posx, posy, width, self.textFieldHeight),
-                        callback=self.editTextCallback,
-                        continuous=True,
-                        readOnly=False,
-                        formatter=None,
-                        placeholder="multiple",
-                    ),
-                )
-                posx += width + gutter
-                width = self.textFieldHeight - 10
-                imageButton = vanilla.ImageButton(
-                    (posx, posy + 1, width, self.textFieldHeight - 2),
-                    callback=self.lockWidthDepthCallback,
-                )
-                imageButton.getNSButton().setBordered_(False)
-                setattr(self.w, "lock" + str(i), imageButton)
-                posx += width + gutter
-                width = widthDimensionBox
-                setattr(
-                    self.w,
-                    "dept" + str(i),
-                    ArrowEditText(
-                        (posx, posy, width, self.textFieldHeight),
-                        callback=self.editTextCallback,
-                        continuous=True,
-                        readOnly=False,
-                        formatter=None,
-                        placeholder="multiple",
-                    ),
-                )
-                posy += self.lineToLine
-            posSize = self.w.getPosSize()
-            self.w.setPosSize((posSize[0], posSize[1], dialogWidth, posSize[3]))
-
-            self.updateDocument(None)
-            self.w.open()
-            self.w.bind("close", self.windowClose_)
-            Glyphs.addCallback(self.update, UPDATEINTERFACE)
-            Glyphs.addCallback(self.updateDocument, DOCUMENTACTIVATED)
-            Glyphs.addCallback(self.updateDocument, DOCUMENTWILLCLOSE)
-        except:
-            print(traceback.format_exc())
+        setUpWindow(self, sender)
 
     @objc.python_method
     def updateDocument(self, sender):
