@@ -3,8 +3,6 @@ import objc
 from GlyphsApp import (
     Glyphs,
     WINDOW_MENU,
-    CORNER,
-    CAP,
 )
 from GlyphsApp.plugins import GeneralPlugin
 from window import setUpWindow
@@ -16,6 +14,7 @@ from Cocoa import (
 )
 from constants import *
 from updateDoc import documentUpdated
+from updateMain import mainUpdater
 import traceback
 
 
@@ -49,71 +48,7 @@ class CapsAndCorners(GeneralPlugin):
 
     @objc.python_method
     def update(self, sender):
-        try:
-            currentDocument = Glyphs.currentDocument
-            if not currentDocument or not self.font or not self.font.selectedLayers:
-                return
-            self.details = {}
-            for layer in self.font.selectedLayers:
-                for hint in layer.hints:
-                    if hint.isCorner:
-                        scale = hint.pyobjc_instanceMethods.scale()
-                        depth = abs(scale.y)
-                        width = abs(scale.x)
-                        isFit = hint.options & 8
-                        if hint.name in self.details:
-                            if self.details[hint.name]["widt"] != width:
-                                self.details[hint.name]["widt"] = MULTIPLE_VALUES
-                            if self.details[hint.name]["dept"] != depth:
-                                self.details[hint.name]["dept"] = MULTIPLE_VALUES
-                            if (
-                                hint.type == CAP
-                                and self.details[hint.name]["fit"] != isFit
-                            ):
-                                self.details[hint.name]["fit"] = MULTIPLE_VALUES
-                        else:
-                            hintDetails = {
-                                "type": hint.type,
-                                "widt": width,
-                                "dept": depth,
-                            }
-                            if hint.type == CAP:
-                                hintDetails["fit"] = isFit
-                            self.details[hint.name] = hintDetails
-            i = 0
-            for cname, ctype in self.cc:
-                anyDetails = cname in self.details
-                for dimension in ["widt", "dept"]:
-                    scaleField = getattr(self.w, dimension + str(i))
-                    if anyDetails:
-                        if self.details[cname][dimension] == MULTIPLE_VALUES:
-                            scaleField.set("")
-                        else:
-                            scaleField.set(
-                                "{0:g}".format(self.details[cname][dimension] * 100.0)
-                            )
-                    scaleField.show(anyDetails)
-                lockButton = getattr(self.w, "lock" + str(i))
-                if anyDetails:
-                    self.isLocked[i] = (
-                        self.details[cname]["widt"] == self.details[cname]["dept"]
-                    )
-                    self.updateLockButtonImage(lockButton, i)
-                lockButton.show(anyDetails)
-                if ctype == CAP:
-                    fitBox = getattr(self.w, "fit_" + str(i))
-                    if anyDetails:
-                        fitBox.set(self.details[cname]["fit"] != 0)
-                        getattr(self.w, "widt" + str(i)).show(not fitBox.get())
-                        # ^ for now, let’s hide this as Glyphs 3 does not report a sensible figure
-                        getattr(self.w, "widt" + str(i)).enable(not fitBox.get())
-                        getattr(self.w, "lock" + str(i)).show(not fitBox.get())
-                    fitBox.show(anyDetails)
-                i += 1
-                if i == NUMBER_OF_FIELDS:
-                    break
-        except:
-            print(traceback.format_exc())
+        mainUpdater(self, sender)
 
     @objc.python_method
     def updateHint(self, cname, ctype, dimension, newValue):
