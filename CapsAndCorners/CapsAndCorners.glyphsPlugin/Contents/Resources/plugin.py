@@ -1,13 +1,27 @@
+# encoding: utf-8
 from __future__ import division, print_function, unicode_literals
+
+###############################################################################
+#
+#
+# 	Caps and Corners
+#
+#
+###########################################################################################################
+
+
 import objc
 from GlyphsApp import *
 from GlyphsApp.plugins import *
 import vanilla
+import objc
 import AppKit
 import traceback
 
 NUMBER_OF_FIELDS = 12
 MULTIPLE_VALUES = -1024
+
+print("=== Caps and Corners Plugin Loading ===")
 
 # from https://forum.glyphsapp.com/t/vanilla-make-edittext-arrow-savvy/5894/2
 GSSteppingTextField = objc.lookUpClass("GSSteppingTextField")
@@ -29,14 +43,25 @@ class CapsAndCorners(GeneralPlugin):
     @objc.python_method
     def settings(self):
         self.name = "Caps and Corners"
+        print(f"Settings called, plugin name: {self.name}")
 
     @objc.python_method
     def start(self):
-        newMenuItem = NSMenuItem(self.name, self.showWindow_)
-        Glyphs.menu[WINDOW_MENU].append(newMenuItem)
+        print("Start method called")
+        try:
+            newMenuItem = NSMenuItem(self.name, self.showWindow_)
+            print(f"Menu item created: {newMenuItem}")
+            print(f"Available menus: {dir(Glyphs.menu)}")
+            Glyphs.menu[WINDOW_MENU].append(newMenuItem)
+            print("Menu item added successfully")
+        except Exception as e:
+            print(f"ERROR in start(): {e}")
+            print(traceback.format_exc())
 
     def showWindow_(self, sender):
+        print(f"=== showWindow_ called with sender: {sender} ===")
         try:
+            print("Initializing window parameters...")
             self.margin = 13
             gutter = 6
             widthName = 128
@@ -44,9 +69,13 @@ class CapsAndCorners(GeneralPlugin):
             widthDimensionBox = 58
             self.textFieldHeight = 23
             self.lineToLine = self.textFieldHeight + 5
+
+            print("Creating HUDFloatingWindow...")
             self.w = vanilla.HUDFloatingWindow(
                 (100, 100), title=self.name, autosaveName="FMXCapsAndCorners"
             )
+            print(f"Window created: {self.w}")
+
             posy = self.margin
             posx = self.margin
             posx += widthName
@@ -69,6 +98,8 @@ class CapsAndCorners(GeneralPlugin):
             posx += width
             dialogWidth = posx + self.margin
             posy += self.lineToLine
+
+            print(f"Creating {NUMBER_OF_FIELDS} fields...")
             for i in range(NUMBER_OF_FIELDS):
                 posx = self.margin
                 width = widthName
@@ -131,64 +162,87 @@ class CapsAndCorners(GeneralPlugin):
                     ),
                 )
                 posy += self.lineToLine
+
+            print("Setting window size...")
             posSize = self.w.getPosSize()
             self.w.setPosSize((posSize[0], posSize[1], dialogWidth, posSize[3]))
+
+            print("Calling updateDocument...")
             self.updateDocument(None)
+
+            print("Opening window...")
             self.w.open()
+
+            print("Binding close callback...")
             self.w.bind("close", self.windowClose_)
+
+            print("Adding Glyphs callbacks...")
             Glyphs.addCallback(self.updateDocument, DOCUMENTACTIVATED)
             Glyphs.addCallback(self.updateDocument, DOCUMENTWILLCLOSE)
-        except:
+
+            print("=== Window opened successfully ===")
+        except Exception as e:
+            print(f"!!! EXCEPTION in showWindow_: {e} !!!")
             print(traceback.format_exc())
 
     @objc.python_method
     def updateDocument(self, sender):
-        for i in range(NUMBER_OF_FIELDS):
-            for prefix in ["name", "fit_", "widt", "lock", "dept"]:
-                getattr(self.w, prefix + str(i)).show(False)
-        Glyphs.removeCallback(self.update)
-        if not Glyphs.currentDocument:
-            self.font = None
-            return
-        self.font = Glyphs.currentDocument.font
-        if not self.font:
-            return
-        Glyphs.addCallback(self.update, UPDATEINTERFACE)
-        corners = set()
-        caps = set()
-        for glyph in self.font.glyphs:
-            for layer in glyph.layers:
-                for hint in layer.hints:
-                    if hint.isCorner:
-                        if hint.type == CORNER:
-                            corners.add(hint.name)
-                        else:
-                            assert hint.type == CAP
-                            caps.add(hint.name)
-        caps = sorted(list(caps))
-        corners = sorted(list(corners))
-        self.cc = [(c, CAP) for c in caps]
-        self.cc += [(c, CORNER) for c in corners]
-        i = 0
-        for cname, ctype in self.cc:
-            if ctype == CAP:
-                getattr(self.w, "fit_" + str(i)).show(True)
-            nameBox = getattr(self.w, "name" + str(i))
-            nameBox.set(cname)
-            nameBox.show(True)
-            getattr(self.w, "widt" + str(i)).show(True)
-            getattr(self.w, "lock" + str(i)).show(True)
-            getattr(self.w, "dept" + str(i)).show(True)
-            i += 1
-            if i == NUMBER_OF_FIELDS:
-                break
-        newHeight = (
-            self.lineToLine + len(self.cc) * self.lineToLine + 2 * self.margin - 4
-        )
-        posSize = self.w.getPosSize()
-        self.w.setPosSize((posSize[0], posSize[1], posSize[2], newHeight))
-        self.isLocked = [False] * NUMBER_OF_FIELDS
-        self.update(None)
+        print(f"updateDocument called with sender: {sender}")
+        try:
+            for i in range(NUMBER_OF_FIELDS):
+                for prefix in ["name", "fit_", "widt", "lock", "dept"]:
+                    getattr(self.w, prefix + str(i)).show(False)
+            Glyphs.removeCallback(self.update)
+            if not Glyphs.currentDocument:
+                print("No current document")
+                self.font = None
+                return
+            self.font = Glyphs.currentDocument.font
+            if not self.font:
+                print("No font in current document")
+                return
+            print(f"Current font: {self.font.familyName}")
+            Glyphs.addCallback(self.update, UPDATEINTERFACE)
+            corners = set()
+            caps = set()
+            for glyph in self.font.glyphs:
+                for layer in glyph.layers:
+                    for hint in layer.hints:
+                        if hint.isCorner:
+                            if hint.type == CORNER:
+                                corners.add(hint.name)
+                            else:
+                                assert hint.type == CAP
+                                caps.add(hint.name)
+            caps = sorted(list(caps))
+            corners = sorted(list(corners))
+            print(f"Found caps: {caps}, corners: {corners}")
+            self.cc = [(c, CAP) for c in caps]
+            self.cc += [(c, CORNER) for c in corners]
+            i = 0
+            for cname, ctype in self.cc:
+                if ctype == CAP:
+                    getattr(self.w, "fit_" + str(i)).show(True)
+                nameBox = getattr(self.w, "name" + str(i))
+                nameBox.set(cname)
+                nameBox.show(True)
+                getattr(self.w, "widt" + str(i)).show(True)
+                getattr(self.w, "lock" + str(i)).show(True)
+                getattr(self.w, "dept" + str(i)).show(True)
+                i += 1
+                if i == NUMBER_OF_FIELDS:
+                    break
+            newHeight = (
+                self.lineToLine + len(self.cc) * self.lineToLine + 2 * self.margin - 4
+            )
+            posSize = self.w.getPosSize()
+            self.w.setPosSize((posSize[0], posSize[1], posSize[2], newHeight))
+            self.isLocked = [False] * NUMBER_OF_FIELDS
+            self.update(None)
+            print("updateDocument completed")
+        except Exception as e:
+            print(f"ERROR in updateDocument: {e}")
+            print(traceback.format_exc())
 
     @objc.python_method
     def updateLockButtonImage(self, lockButton, i):
@@ -255,14 +309,15 @@ class CapsAndCorners(GeneralPlugin):
                     if anyDetails:
                         fitBox.set(self.details[cname]["fit"] != 0)
                         getattr(self.w, "widt" + str(i)).show(not fitBox.get())
-                        # ^ for now, let’s hide this as Glyphs 3 does not report a sensible figure
+                        # ^ for now, let's hide this as Glyphs 3 does not report a sensible figure
                         getattr(self.w, "widt" + str(i)).enable(not fitBox.get())
                         getattr(self.w, "lock" + str(i)).show(not fitBox.get())
                     fitBox.show(anyDetails)
                 i += 1
                 if i == NUMBER_OF_FIELDS:
                     break
-        except:
+        except Exception as e:
+            print(f"ERROR in update: {e}")
             print(traceback.format_exc())
 
     @objc.python_method
@@ -275,7 +330,7 @@ class CapsAndCorners(GeneralPlugin):
                     scale = hint.pyobjc_instanceMethods.scale()
                     if dimension == "widt":
                         if abs(scale.x - newValue) < 0.00001:
-                            # no change. let’s skip this hint in order to avoid “empty” undo steps
+                            # no change. let's skip this hint in order to avoid "empty" undo steps
                             continue
                         if scale.x > 0:
                             scale.x = newValue
@@ -363,6 +418,7 @@ class CapsAndCorners(GeneralPlugin):
 
     @objc.python_method
     def __del__(self):
+        print("Plugin destructor called")
         Glyphs.removeCallback(self.update)
         Glyphs.removeCallback(self.updateDocument)
 
@@ -372,9 +428,11 @@ class CapsAndCorners(GeneralPlugin):
         return __file__
 
     def windowClose_(self, window):
+        print("Window close called")
         try:
             Glyphs.removeCallback(self.update)
             Glyphs.removeCallback(self.updateDocument)
             return True
-        except:
+        except Exception as e:
+            print(f"ERROR in windowClose_: {e}")
             print(traceback.format_exc())
